@@ -1,8 +1,10 @@
+run = "streamlit run main.py --server.port 8080 --server.address 0.0.0.0"
 entrypoint = "main.py"
 modules = ["python-3.11"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["cairo", "ffmpeg-full", "freetype", "ghostscript", "glibcLocales", "gobject-introspection", "gtk3", "pkg-config", "qhull", "tcl", "tk"]
 
 [unitTest]
 language = "python3"
@@ -11,5 +13,5 @@ language = "python3"
 requiredFiles = [".replit", "replit.nix"]
 
 [deployment]
-run = ["python3", "main.py"]
+run = "streamlit run main.py --server.port 8080 --server.address 0.0.0.0"
 deploymentTarget = "cloudrun"

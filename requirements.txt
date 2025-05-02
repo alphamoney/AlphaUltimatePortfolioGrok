@@ -1,7 +1,10 @@
-# Updated pypfopt version to fix installation issue
 pandas==2.2.2
-pypfopt==0.5.4
+cvxpy==1.5.3  # Latest version as of my last update
 yfinance==0.2.40
-streamlit==1.36.0
+streamlit==1.45.0
 matplotlib==3.9.0
 numpy==1.26.4
+Pillow==10.2.0
+click==8.1.7
+jinja2==3.1.3
+cvxpy

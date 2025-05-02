@@ -15,3 +15,7 @@ requiredFiles = [".replit", "replit.nix"]
 [deployment]
 run = "streamlit run main.py --server.port 8080 --server.address 0.0.0.0"
 deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 8080
+externalPort = 80

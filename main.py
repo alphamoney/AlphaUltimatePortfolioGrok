@@ -1,87 +1,74 @@
-# Combined Screener + Optimizer: Alpha Financial Nordic (Streamlit Replit App)
-# Uses manually selected Schwab ETFs to build and display Efficient Frontier
-
+import cvxpy as cp
+import numpy as np
 import pandas as pd
-from pypfopt import EfficientFrontier, risk_models, expected_returns, plotting
-from pypfopt.objective_functions import L2_reg
 import yfinance as yf
-import time
 import streamlit as st
 import matplotlib.pyplot as plt
 
-st.set_page_config(layout="wide")
-st.title("Alpha's Ultimate Portfolio Optimizer")
+# Streamlit app title
+st.title("Alpha's Ultimate Portfolios")
 
-# ===== TICKER SELECTION =====
-st.subheader("Step 1: Select Schwab-Compatible ETFs")
-default_tickers = ["SCHB", "SCHG", "SCHF", "SCHZ", "SCYB", "SCHI", "SCHH"]
-TICKERS = st.multiselect("Select ETFs", default_tickers, default=default_tickers)
-if not TICKERS:
-    st.error("Please select at least one ETF.")
-    st.stop()
-st.write(f"Loaded {len(TICKERS)} ETFs for optimization")
+# Default ETF tickers (from your project summary)
+default_tickers = ["SCHB", "SCHG", "SCHF", "SCHZ", "SCHH"]
 
-# ===== FETCH HISTORICAL PRICES =====
-st.subheader("Step 2: Downloading Historical Prices")
-price_data = {}
-min_tickers_required = 3
-progress = st.progress(0)
-for i, ticker in enumerate(TICKERS):
-    try:
-        df = yf.download(ticker, period="5y", interval="1mo")[['Adj Close']].rename(columns={'Adj Close': ticker})
-        if not df.empty and len(df) >= 12:
-            price_data[ticker] = df
-            st.success(f"Downloaded: {ticker}")
-        else:
-            st.warning(f"No data for {ticker}")
-        time.sleep(1)
-    except Exception as e:
-        st.warning(f"Failed to download {ticker}: {e}")
-    progress.progress((i + 1) / len(TICKERS))
-
-if len(price_data) < min_tickers_required:
-    st.error(f"Insufficient data: Only {len(price_data)}/{min_tickers_required} tickers returned valid data.")
+# Fetch data using yfinance
+st.write("Fetching ETF data...")
+try:
+    df = yf.download(default_tickers, period="2y", interval="1mo")['Adj Close']
+    if df.empty or df.isna().all().all():
+        raise ValueError("No data retrieved for the selected ETFs.")
+except Exception as e:
+    st.error(f"Error fetching ETF data: {e}")
     st.stop()
 
-prices = pd.concat(price_data.values(), axis=1, join="outer").ffill()
-prices.index = pd.to_datetime(prices.index)
-prices = prices.sort_index()
-
-if len(prices) < 12:
-    st.error("Insufficient data points for optimization (minimum 12 months required).")
+# Calculate expected returns and covariance
+returns = df.pct_change().dropna()
+if returns.empty:
+    st.error("No valid returns data after processing. Please check the ETFs or data period.")
     st.stop()
 
-# ===== CALCULATE RETURNS & COVARIANCE =====
-st.subheader("Step 3: Optimizing Portfolio")
-returns = prices.pct_change().dropna()
-mu = expected_returns.mean_historical_return(prices, frequency=12)
-S = risk_models.sample_cov(prices, frequency=12)
-ef = EfficientFrontier(mu, S, weight_bounds=(0, 1))
-gamma = st.slider("L2 Regularization Strength", 0.0, 2.0, 1.0)
-ef.add_objective(L2_reg, gamma=gamma)
-weights = ef.max_sharpe()
-cleaned_weights = ef.clean_weights()
-expected_ret, volatility, sharpe = ef.portfolio_performance()
+mu = returns.mean() * 252  # Annualized expected returns
+S = returns.cov() * 252    # Annualized covariance matrix
 
-# ===== DISPLAY RESULTS =====
-st.write("### Optimal Portfolio Weights")
-weights_df = pd.DataFrame.from_dict(cleaned_weights, orient='index', columns=['Weight'])
-st.dataframe(weights_df.style.format("{:.2%}"))
+# Portfolio optimization with cvxpy
+st.write("Optimizing portfolio...")
+n = len(mu)
+w = cp.Variable(n)  # Weights
+gamma = 0.1  # Risk aversion parameter (adjust as needed)
 
-csv = weights_df.to_csv().encode('utf-8')
-st.download_button("Download Portfolio Weights", csv, "portfolio_weights.csv", "text/csv")
+# Objective: Maximize return - risk (mean-variance optimization)
+objective = cp.Maximize(mu @ w - gamma * cp.quad_form(w, S))
+constraints = [cp.sum(w) == 1, w >= 0]  # Sum of weights = 1, no shorting
+problem = cp.Problem(objective, constraints)
 
-st.metric("Expected Annual Return", f"{expected_ret:.2%}")
-st.metric("Annual Volatility", f"{volatility:.2%}")
-st.metric("Sharpe Ratio", f"{sharpe:.2f}")
+# Solve the optimization problem
+try:
+    problem.solve()
+    weights = w.value
+except Exception as e:
+    st.error(f"Optimization failed: {e}")
+    st.stop()
 
-# ===== PLOT FRONTIER =====
-st.write("### Efficient Frontier")
-fig, ax = plt.subplots(figsize=(6, 4))
-plotting.plot_efficient_frontier(ef, ax=ax, show_assets=True)
-ax.set_xlabel("Volatility")
-ax.set_ylabel("Return")
-ax.set_title("Efficient Frontier (Alpha’s Optimized ETFs)")
-ax.grid(True)
-st.pyplot(fig)
-plt.close(fig)
+# Check if optimization succeeded
+if weights is None or not np.isfinite(weights).all():
+    st.error("Optimization failed to find a solution. Try adjusting the gamma parameter or data.")
+    st.stop()
+
+# Clean weights (similar to pypfopt's clean_weights)
+weights = np.maximum(weights, 0)  # Ensure no negative weights
+weights /= np.sum(weights)  # Normalize to sum to 1
+weights_dict = {ticker: round(weight, 4) for ticker, weight in zip(default_tickers, weights) if weight > 0.0001}
+
+# Display optimized weights
+st.write("### Optimized Portfolio Weights")
+st.write(weights_dict)
+
+# Plot the weights
+st.write("### Portfolio Allocation Chart")
+plt.figure(figsize=(10, 6))
+plt.bar(weights_dict.keys(), weights_dict.values(), color='skyblue')
+plt.title("Optimized Portfolio Weights")
+plt.xlabel("ETFs")
+plt.ylabel("Weights")
+plt.xticks(rotation=45)
+st.pyplot(plt)

@@ -3,3 +3,4 @@ pypfopt==0.5.5
 yfinance==0.2.40
 streamlit==1.36.0
 matplotlib==3.9.0
+numpy==1.26.4

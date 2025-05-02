@@ -1,5 +1,6 @@
+# Updated pypfopt version to fix installation issue
 pandas==2.2.2
-pypfopt==0.5.5
+pypfopt==0.5.4
 yfinance==0.2.40
 streamlit==1.36.0
 matplotlib==3.9.0
